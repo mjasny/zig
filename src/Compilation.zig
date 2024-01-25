@@ -758,10 +758,7 @@ pub const MiscTask = enum {
 
     @"mingw-w64 crt2.o",
     @"mingw-w64 dllcrt2.o",
-    @"mingw-w64 mingw32.lib",
-    @"mingw-w64 msvcrt-os.lib",
     @"mingw-w64 mingwex.lib",
-    @"mingw-w64 uuid.lib",
 };
 
 pub const MiscError = struct {
@@ -1545,6 +1542,7 @@ pub fn create(gpa: Allocator, arena: Allocator, options: CreateOptions) !*Compil
             .darwin_sdk_layout = libc_dirs.darwin_sdk_layout,
             .frameworks = options.frameworks,
             .lib_dirs = options.lib_dirs,
+            .framework_dirs = options.framework_dirs,
             .rpath_list = options.rpath_list,
             .symbol_wrap_set = options.symbol_wrap_set,
             .allow_shlib_undefined = options.linker_allow_shlib_undefined,
@@ -1818,14 +1816,9 @@ pub fn create(gpa: Allocator, arena: Allocator, options: CreateOptions) !*Compil
         if (comp.wantBuildMinGWFromSource()) {
             if (!target_util.canBuildLibC(target)) return error.LibCUnavailable;
 
-            const static_lib_jobs = [_]Job{
-                .{ .mingw_crt_file = .mingw32_lib },
-                .{ .mingw_crt_file = .mingwex_lib },
-                .{ .mingw_crt_file = .uuid_lib },
-            };
             const crt_job: Job = .{ .mingw_crt_file = if (is_dyn_lib) .dllcrt2_o else .crt2_o };
-            try comp.work_queue.ensureUnusedCapacity(static_lib_jobs.len + 1);
-            comp.work_queue.writeAssumeCapacity(&static_lib_jobs);
+            try comp.work_queue.ensureUnusedCapacity(2);
+            comp.work_queue.writeItemAssumeCapacity(.{ .mingw_crt_file = .mingwex_lib });
             comp.work_queue.writeItemAssumeCapacity(crt_job);
 
             // When linking mingw-w64 there are some import libs we always need.
@@ -2373,7 +2366,7 @@ fn renameTmpIntoCache(
             // See https://github.com/ziglang/zig/issues/8362
             error.AccessDenied => switch (builtin.os.tag) {
                 .windows => {
-                    if (!seen_eaccess) return error.AccessDenied;
+                    if (seen_eaccess) return error.AccessDenied;
                     seen_eaccess = true;
                     try cache_directory.handle.deleteTree(o_sub_path);
                     continue;
